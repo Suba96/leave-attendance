@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Leave Approval System</title>
+<style>
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    max-width: 650px;
+    margin: 20px auto;
+    background: #f0f4f8;
+    color: #333;
+  }
+  h1, h2 {
+    text-align: center;
+    color: #2c3e50;
+    margin-bottom: 10px;
+  }
+  label, input, button, select, textarea {
+    display: block;
+    width: 100%;
+    margin: 10px 0 15px;
+    font-size: 1rem;
+  }
+  input, textarea, select {
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    box-sizing: border-box;
+    font-family: inherit;
+    font-size: 1rem;
+  }
+  button {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 12px 15px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background-color 0.3s ease;
+  }
+  button:hover:not(:disabled) {
+    background-color: #2980b9;
+  }
+  button:disabled {
+    background-color: #bdc3c7;
+    cursor: not-allowed;
+  }
+  #leave-list .request, #employee-leaves .request {
+    border: 1px solid #ddd;
+    padding: 15px;
+    margin-bottom: 14px;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.1);
+    background: white;
+  }
+  .approved {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+  }
+  .rejected {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+  }
+  .pending {
+    background-color: #fff3cd;
+    border-color: #ffeeba;
+    color: #856404;
+  }
+  .hidden {
+    display: none;
+  }
+  #pagination-controls {
+    text-align: center;
+    margin-top: 10px;
+  }
+  #pagination-controls button {
+    width: 110px;
+    margin: 0 10px;
+    font-weight: 600;
+  }
+  #page-info {
+    font-weight: 600;
+    color: #2c3e50;
+  }
+  #login-error {
+    font-weight: 600;
+    color: red;
+    margin-top: 0;
+  }
+  #search-container {
+    margin-bottom: 15px;
+  }
+  #search-input {
+    width: 100%;
+    padding: 8px;
+    font-size: 1rem;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+  }
+  .logout-btn {
+    background-color: #e74c3c;
+    margin-bottom: 20px;
+  }
+  .logout-btn:hover {
+    background-color: #c0392b;
+  }
+</style>
+</head>
+<body>
+
+<h1>Leave Approval System</h1>
+
+<div id="login-section">
+  <h2>Login</h2>
+  <label for="username">Username (emp1 or mgr1):</label>
+  <input id="username" type="text" autocomplete="off" />
+  <label for="password">Password:</label>
+  <input id="password" type="password" autocomplete="off" />
+  <button id="login-btn">Login</button>
+  <p id="login-error"></p>
+</div>
+
+<div id="employee-section" class="hidden">
+  <h2>Welcome Employee</h2>
+  <button id="logout-btn-emp" class="logout-btn">Logout</button>
+ 
+  <h3>Apply for Leave</h3>
+  <form id="leave-form">
+    <label>Start Date:</label>
+    <input type="date" id="start-date" required />
+   
+    <label>End Date:</label>
+    <input type="date" id="end-date" required />
+   
+    <label>Reason:</label>
+    <textarea id="reason" required></textarea>
+   
+    <button type="submit">Submit Leave Request</button>
+  </form>
+
+  <h3>Your Leave Requests</h3>
+  <div id="employee-leaves"></div>
+</div>
+
+<div id="manager-section" class="hidden">
+  <h2>Welcome Manager</h2>
+  <button id="logout-btn-mgr" class="logout-btn">Logout</button>
+ 
+  <div id="search-container">
+    <input type="text" id="search-input" placeholder="Search by employee username..." />
+  </div>
+
+  <h3>All Leave Requests</h3>
+  <div id="leave-list"></div>
+
+  <div id="pagination-controls">
+    <button id="prev-page" disabled>Previous</button>
+    <span id="page-info">Page 1</span>
+    <button id="next-page" disabled>Next</button>
+  </div>
+</div>
+
+<script>
+  // Mock users
+  const users = {
+    emp1: { password: "1234", role: "employee", leaves: [] },
+    mgr1: { password: "admin", role: "manager" }
+  };
+
+  let currentUser = null;
+
+  // DOM Elements
+  const loginSection = document.getElementById('login-section');
+  const employeeSection = document.getElementById('employee-section');
+  const managerSection = document.getElementById('manager-section');
+  const loginError = document.getElementById('login-error');
+
+  const usernameInput = document.getElementById('username');
+  const passwordInput = document.getElementById('password');
+  const loginBtn = document.getElementById('login-btn');
+
+  const logoutBtnEmp = document.getElementById('logout-btn-emp');
+  const logoutBtnMgr = document.getElementById('logout-btn-mgr');
+
+  const leaveForm = document.getElementById('leave-form');
+  const employeeLeavesDiv = document.getElementById('employee-leaves');
+
+  const leaveListDiv = document.getElementById('leave-list');
+
+  const prevBtn = document.getElementById('prev-page');
+  const nextBtn = document.getElementById('next-page');
+  const pageInfo = document.getElementById('page-info');
+  const searchInput = document.getElementById('search-input');
+
+  // All leave requests stored here for manager view
+  const allLeaves = [];
+
+  // Pagination variables
+  const leavePerPage = 5;
+  let currentPage = 1;
+
+  // Login function
+  loginBtn.onclick = () => {
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value.trim();
+    if(users[username] && users[username].password === password) {
+      currentUser = { username, ...users[username] };
+      loginSection.classList.add('hidden');
+      loginError.textContent = '';
+
+      if(currentUser.role === 'employee') {
+        employeeSection.classList.remove('hidden');
+        updateEmployeeLeaves();
+      } else if(currentUser.role === 'manager') {
+        managerSection.classList.remove('hidden');
+        currentPage = 1;
+        searchInput.value = '';
+        updateLeaveList();
+      }
+    } else {
+      loginError.textContent = 'Invalid username or password';
+    }
+  };
+
+  // Confirm logout function
+  function confirmLogout() {
+    return confirm('Are you sure you want to logout?');
+  }
+
+  logoutBtnEmp.onclick = () => {
+    if(confirmLogout()) {
+      currentUser = null;
+      employeeSection.classList.add('hidden');
+      loginSection.classList.remove('hidden');
+      usernameInput.value = '';
+      passwordInput.value = '';
+    }
+  };
+
+  logoutBtnMgr.onclick = () => {
+    if(confirmLogout()) {
+      currentUser = null;
+      managerSection.classList.add('hidden');
+      loginSection.classList.remove('hidden');
+      usernameInput.value = '';
+      passwordInput.value = '';
+    }
+  };
+
+  // Employee leave request submission
+  leaveForm.onsubmit = (e) => {
+    e.preventDefault();
+    const startDate = document.getElementById('start-date').value;
+    const endDate = document.getElementById('end-date').value;
+    const reason = document.getElementById('reason').value.trim();
+
+    if(new Date(endDate) < new Date(startDate)) {
+      alert('End date cannot be before start date.');
+      return;
+    }
+
+    const leaveRequest = {
+      id: Date.now(),
+      username: currentUser.username,
+      startDate,
+      endDate,
+      reason,
+      status: 'Pending'
+    };
+
+    // Save leave request to user and global list
+    users[currentUser.username].leaves.push(leaveRequest);
+    allLeaves.push(leaveRequest);
+
+    updateEmployeeLeaves();
+    leaveForm.reset();
+    alert('Leave request submitted and pending approval.');
+  };
+
+  // Update employee leave requests list
+  function updateEmployeeLeaves() {
+    const leaves = users[currentUser.username].leaves;
+    employeeLeavesDiv.innerHTML = '';
+    if(leaves.length === 0) {
+      employeeLeavesDiv.innerHTML = '<p>No leave requests yet.</p>';
+      return;
+    }
+    leaves.forEach(lv => {
+      const div = document.createElement('div');
+      div.classList.add('request', lv.status.toLowerCase());
+      div.innerHTML = `
+        <b>From:</b> ${lv.startDate} <b>To:</b> ${lv.endDate} <br/>
+        <b>Reason:</b> ${lv.reason} <br/>
+        <b>Status:</b> <span>${lv.status}</span>
+      `;
+      employeeLeavesDiv.appendChild(div);
+    });
+  }
+
+  // Filter and paginate leaves for manager
+  function updateLeaveList() {
+    const searchTerm = searchInput.value.trim().toLowerCase();
+
+    // Filter leaves by search term in username
+    let filteredLeaves = allLeaves;
+    if(searchTerm) {
+      filteredLeaves = allLeaves.filter(lv => lv.username.toLowerCase().includes(searchTerm));
+    }
+
+    const totalLeaves = filteredLeaves.length;
+    const totalPages = Math.ceil(totalLeaves / leavePerPage);
+
+    // Adjust currentPage if out of range
+    if(currentPage > totalPages) currentPage = totalPages || 1;
+
+    leaveListDiv.innerHTML = '';
+
+    if(totalLeaves === 0) {
+      leaveListDiv.innerHTML = '<p>No leave requests found.</p>';
+    } else {
+      const startIdx = (currentPage -1) * leavePerPage;
+      const endIdx = startIdx + leavePerPage;
+      const leavesToShow = filteredLeaves.slice(startIdx, endIdx);
+
+      leavesToShow.forEach(lv => {
+        const div = document.createElement('div');
+        div.classList.add('request', lv.status.toLowerCase());
+        div.innerHTML = `
+          <b>Employee:</b> ${lv.username} <br/>
+          <b>From:</b> ${lv.startDate} <br/>
+          <b>To:</b> ${lv.endDate} <br/>
+          <b>Reason:</b> ${lv.reason} <br/>
+          <b>Status:</b> <strong>${lv.status}</strong> <br/>
+          ${lv.status === 'Pending' ? `<button class="approve-btn">Approve</button> <button class="reject-btn">Reject</button>` : ''}
+        `;
+
+        if(lv.status === 'Pending') {
+          div.querySelector('.approve-btn').onclick = () => {
+            lv.status = 'Approved';
+            updateLeaveList();
+            if(users[lv.username]) updateEmployeeLeavesForUser(lv.username);
+          };
+
+          div.querySelector('.reject-btn').onclick = () => {
+            lv.status = 'Rejected';
+            updateLeaveList();
+            if(users[lv.username]) updateEmployeeLeavesForUser(lv.username);
+          };
+        }
+
+        leaveListDiv.appendChild(div);
+      });
+    }
+
+    // Update pagination controls
+    pageInfo.textContent = `Page ${currentPage} of ${totalPages || 1} (${totalLeaves} request${totalLeaves !== 1 ? 's' : ''})`;
+    prevBtn.disabled = currentPage === 1;
+    nextBtn.disabled = currentPage === totalPages || totalPages === 0;
+  }
+
+  prevBtn.onclick = () => {
+    if(currentPage > 1) {
+      currentPage--;
+      updateLeaveList();
+    }
+  };
+
+  nextBtn.onclick = () => {
+    const searchTerm = searchInput.value.trim().toLowerCase();
+    let filteredLeaves = allLeaves;
+    if(searchTerm) {
+      filteredLeaves = allLeaves.filter(lv => lv.username.toLowerCase().includes(searchTerm));
+    }
+    const totalPages = Math.ceil(filteredLeaves.length / leavePerPage);
+    if(currentPage < totalPages) {
+      currentPage++;
+      updateLeaveList();
+    }
+  };
+
+  // Update employee leave list for specific user (called after approval/rejection)
+  function updateEmployeeLeavesForUser(username) {
+    if(currentUser.role === 'employee' && currentUser.username === username) {
+      updateEmployeeLeaves();
+    }
+  }
+
+  // Search input event to reset page and update list
+  searchInput.addEventListener('input', () => {
+    currentPage = 1;
+    updateLeaveList();
+  });
+
+</script>
+
+</body>
+</html>
